@@ -447,8 +447,8 @@ function runPca() {
 }
 
 function previewAdjusted(label = '滑块调整', replaceCurrent = false) {
-  if (!state.originalImageData) return;
-  const src = state.originalImageData.data;
+  if (!state.workingImageData) return;
+  const src = state.workingImageData.data;
   const out = new Uint8ClampedArray(src.length);
   const s = state.sliders;
   for (let i = 0; i < src.length; i += 4) {
@@ -477,7 +477,7 @@ function previewAdjusted(label = '滑块调整', replaceCurrent = false) {
 
     out[i] = r; out[i + 1] = g; out[i + 2] = b; out[i + 3] = src[i + 3];
   }
-  state.workingImageData = new ImageData(out, state.originalImageData.width, state.originalImageData.height);
+  state.workingImageData = new ImageData(out, state.workingImageData.width, state.workingImageData.height);
   previewCtx.putImageData(state.workingImageData, 0, 0);
   recordVersion(label, { replaceCurrent });
 }
