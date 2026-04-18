@@ -15,6 +15,12 @@ const state = {
     linearGain: 1,
     nonlinearGamma: 1,
   },
+  history: {
+    versions: [],
+    currentIndex: -1,
+    counter: 0,
+    maxSize: 80,
+  },
 };
 
 const els = {
@@ -32,6 +38,8 @@ const els = {
   kValueLabel: document.getElementById('kValueLabel'),
   colorSpace: document.getElementById('colorSpace'),
   adjustmentControls: document.getElementById('adjustmentControls'),
+  versionSelect: document.getElementById('versionSelect'),
+  versionHint: document.getElementById('versionHint'),
 };
 
 const previewCtx = els.previewCanvas.getContext('2d');
@@ -144,9 +152,82 @@ function initSliders() {
     document.getElementById(`slider-${key}`).addEventListener('input', (e) => {
       state.sliders[key] = Number(e.target.value);
       document.getElementById(`label-${key}`).textContent = Number(e.target.value).toFixed(2);
-      previewAdjusted();
+      previewAdjusted('滑块预览', true);
     });
   });
+}
+
+function cloneImageData(imageData) {
+  if (!imageData) return null;
+  return new ImageData(new Uint8ClampedArray(imageData.data), imageData.width, imageData.height);
+}
+
+function renderVersionHistory() {
+  const { versions, currentIndex } = state.history;
+  els.versionSelect.innerHTML = '';
+  versions.forEach((v, index) => {
+    const opt = document.createElement('option');
+    const flag = index === currentIndex ? '（当前）' : '';
+    opt.value = String(index);
+    opt.textContent = `#${v.id} ${v.label} ${flag}`;
+    els.versionSelect.appendChild(opt);
+  });
+  if (currentIndex >= 0) {
+    els.versionSelect.value = String(currentIndex);
+    const current = versions[currentIndex];
+    els.versionHint.textContent = `当前版本：#${current.id} ${current.label}（共 ${versions.length} 个）`;
+  } else {
+    els.versionHint.textContent = '当前版本：-';
+  }
+}
+
+function recordVersion(label, options = {}) {
+  if (!state.workingImageData) return;
+  const { replaceCurrent = false } = options;
+  const history = state.history;
+  const snapshot = cloneImageData(state.workingImageData);
+  const current = history.versions[history.currentIndex];
+
+  if (replaceCurrent && current && current.label === label) {
+    current.imageData = snapshot;
+    current.at = Date.now();
+    renderVersionHistory();
+    return;
+  }
+
+  if (history.currentIndex < history.versions.length - 1) {
+    history.versions = history.versions.slice(0, history.currentIndex + 1);
+  }
+
+  history.versions.push({
+    id: ++history.counter,
+    label,
+    at: Date.now(),
+    imageData: snapshot,
+  });
+
+  if (history.versions.length > history.maxSize) {
+    history.versions.shift();
+  }
+  history.currentIndex = history.versions.length - 1;
+  renderVersionHistory();
+}
+
+function restoreVersion(index) {
+  const target = state.history.versions[index];
+  if (!target) return;
+  state.history.currentIndex = index;
+  state.workingImageData = cloneImageData(target.imageData);
+  previewCtx.putImageData(state.workingImageData, 0, 0);
+  renderVersionHistory();
+  els.statusText.textContent = `已恢复到版本 #${target.id}：${target.label}`;
+}
+
+function resetHistoryWithInitialVersion() {
+  state.history.versions = [];
+  state.history.currentIndex = -1;
+  state.history.counter = 0;
+  recordVersion('初始版本');
 }
 
 function drawImageOnCanvas(img) {
@@ -365,7 +446,7 @@ function runPca() {
   ].join('\n');
 }
 
-function previewAdjusted() {
+function previewAdjusted(label = '滑块调整', replaceCurrent = false) {
   if (!state.originalImageData) return;
   const src = state.originalImageData.data;
   const out = new Uint8ClampedArray(src.length);
@@ -398,6 +479,7 @@ function previewAdjusted() {
   }
   state.workingImageData = new ImageData(out, state.originalImageData.width, state.originalImageData.height);
   previewCtx.putImageData(state.workingImageData, 0, 0);
+  recordVersion(label, { replaceCurrent });
 }
 
 function areaFilterByClusters(k = 6, minRatio = 0.06) {
@@ -418,6 +500,7 @@ function areaFilterByClusters(k = 6, minRatio = 0.06) {
     data[i] = best[0]; data[i + 1] = best[1]; data[i + 2] = best[2];
   }
   previewCtx.putImageData(state.workingImageData, 0, 0);
+  recordVersion('面积筛选');
 }
 
 function statsLab(imageData) {
@@ -469,6 +552,7 @@ function applyReinhardTransfer() {
   }
   state.workingImageData = new ImageData(out, state.workingImageData.width, state.workingImageData.height);
   previewCtx.putImageData(state.workingImageData, 0, 0);
+  recordVersion('Reinhard 颜色迁移');
 }
 
 function applyCurveTransform() {
@@ -492,6 +576,7 @@ function applyCurveTransform() {
   }
   state.workingImageData = new ImageData(out, state.workingImageData.width, state.workingImageData.height);
   previewCtx.putImageData(state.workingImageData, 0, 0);
+  recordVersion('线性/非线性色彩变换');
 }
 
 async function applyTfStyleTransferLite() {
@@ -529,6 +614,7 @@ async function applyTfStyleTransferLite() {
   }
   state.workingImageData = new ImageData(out, state.workingImageData.width, state.workingImageData.height);
   previewCtx.putImageData(state.workingImageData, 0, 0);
+  recordVersion('DL 简易风格迁移');
 }
 
 function setupEvents() {
@@ -583,10 +669,10 @@ function setupEvents() {
   document.getElementById('runPcaBtn').addEventListener('click', runPca);
   document.getElementById('runAreaFilterBtn').addEventListener('click', () => areaFilterByClusters(Number(els.kInput.value), 0.05));
 
-  document.getElementById('applyAdjustBtn').addEventListener('click', previewAdjusted);
+  document.getElementById('applyAdjustBtn').addEventListener('click', () => previewAdjusted('应用滑块调整'));
   document.getElementById('resetAdjustBtn').addEventListener('click', () => {
     initSliders();
-    previewAdjusted();
+    previewAdjusted('重置滑块');
   });
 
   document.getElementById('runReinhardBtn').addEventListener('click', applyReinhardTransfer);
@@ -618,6 +704,25 @@ function setupEvents() {
   els.themeBtn.addEventListener('click', () => {
     document.documentElement.classList.toggle('dark');
   });
+
+  document.getElementById('undoBtn').addEventListener('click', () => {
+    if (state.history.currentIndex <= 0) return;
+    restoreVersion(state.history.currentIndex - 1);
+  });
+
+  document.getElementById('redoBtn').addEventListener('click', () => {
+    if (state.history.currentIndex >= state.history.versions.length - 1) return;
+    restoreVersion(state.history.currentIndex + 1);
+  });
+
+  document.getElementById('restoreVersionBtn').addEventListener('click', () => {
+    const index = Number(els.versionSelect.value);
+    restoreVersion(index);
+  });
+
+  document.getElementById('restoreInitialBtn').addEventListener('click', () => {
+    restoreVersion(0);
+  });
 }
 
 function loadImageFromFile(file, role = 'source') {
@@ -626,7 +731,7 @@ function loadImageFromFile(file, role = 'source') {
     if (role === 'source') {
       state.sourceImage = img;
       drawImageOnCanvas(img);
-      previewAdjusted();
+      resetHistoryWithInitialVersion();
       els.statusText.textContent = '原图已载入，可开始颜色分析。';
     } else {
       state.targetImage = img;

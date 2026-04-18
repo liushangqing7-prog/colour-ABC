@@ -104,6 +104,21 @@
             <button id="runDlTransferBtn" class="px-2 py-2 bg-brand-900 text-white rounded">深度学习简易风格迁移</button>
           </div>
         </div>
+
+        <div class="card p-4 space-y-3">
+          <h2 class="font-semibold">4) 版本记录</h2>
+          <p class="text-xs text-slate-500">自动记录每次有效修改，可随时回到初始版本。</p>
+          <select id="versionSelect" class="w-full rounded border p-2 text-xs bg-transparent"></select>
+          <div id="versionHint" class="text-xs text-slate-500">当前版本：-</div>
+          <div class="grid grid-cols-2 gap-2">
+            <button id="undoBtn" class="px-2 py-2 bg-slate-300 dark:bg-slate-700 rounded">回退一步</button>
+            <button id="redoBtn" class="px-2 py-2 bg-slate-300 dark:bg-slate-700 rounded">前进一步</button>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <button id="restoreVersionBtn" class="px-2 py-2 bg-brand-600 text-white rounded">恢复选中版本</button>
+            <button id="restoreInitialBtn" class="px-2 py-2 bg-brand-700 text-white rounded">回到初始版本</button>
+          </div>
+        </div>
       </section>
 
       <section class="col-span-6 flex flex-col gap-4 overflow-hidden">
