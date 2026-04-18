@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="zh-CN" class="h-full">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Colour AAA - 在线专业色彩处理工具</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#eff6ff',
+              100: '#dbeafe',
+              500: '#2563eb',
+              700: '#1d4ed8',
+              900: '#1e3a8a'
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <script defer src="https://docs.opencv.org/4.9.0/opencv.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
+  <style>
+    .card { @apply bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700; }
+    .slider-value { min-width: 3rem; text-align: right; }
+    .swatch { width: 100%; height: 44px; border-radius: 10px; border: 1px solid rgba(148, 163, 184, 0.4); }
+    .loading {
+      width: 20px;
+      height: 20px;
+      border: 2px solid #cbd5e1;
+      border-top-color: #2563eb;
+      border-radius: 999px;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body class="h-full bg-slate-100 dark:bg-slate-900 text-slate-900 dark:text-slate-50 transition-colors">
+  <div id="app" class="h-full flex flex-col">
+    <header class="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-900/90 backdrop-blur">
+      <div>
+        <h1 class="text-xl font-bold text-brand-700 dark:text-brand-100">Colour AAA</h1>
+        <p class="text-xs text-slate-500 dark:text-slate-400">专业在线色彩提取与调色工作台（纯前端）</p>
+      </div>
+      <div class="flex gap-2 items-center">
+        <button id="copyPaletteBtn" class="px-3 py-2 text-sm bg-slate-200 dark:bg-slate-700 rounded-lg">复制色板</button>
+        <button id="downloadBtn" class="px-3 py-2 text-sm bg-brand-600 text-white rounded-lg">下载结果图</button>
+        <button id="themeBtn" class="px-3 py-2 text-sm bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 rounded-lg">切换明暗</button>
+      </div>
+    </header>
+
+    <main class="flex-1 grid grid-cols-12 gap-4 p-4 overflow-hidden">
+      <section class="col-span-3 overflow-y-auto space-y-4 pr-1">
+        <div class="card p-4">
+          <h2 class="font-semibold mb-3">1) 图片输入</h2>
+          <label id="dropZone" class="block border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-lg p-4 text-center cursor-pointer hover:border-brand-500 transition">
+            <input id="imageInput" type="file" accept="image/*" class="hidden" />
+            <p class="text-sm">拖拽图片到这里，或点击上传</p>
+            <p class="text-xs text-slate-500 mt-1">支持 JPG / PNG / WebP</p>
+          </label>
+          <label class="block mt-3 text-sm">目标风格图（用于颜色迁移）
+            <input id="targetInput" type="file" accept="image/*" class="mt-1 block w-full text-xs" />
+          </label>
+          <p class="text-xs text-slate-500 mt-2">步骤提示：先上传原图，再使用提取与调色功能。</p>
+        </div>
+
+        <div class="card p-4 space-y-3">
+          <h2 class="font-semibold">2) 颜色提取模块</h2>
+          <div>
+            <label class="text-sm">K 值：<span id="kValueLabel">5</span></label>
+            <input id="kInput" type="range" min="2" max="12" value="5" class="w-full" />
+          </div>
+          <div>
+            <label class="text-sm">色彩空间</label>
+            <select id="colorSpace" class="w-full mt-1 rounded border p-1 bg-transparent">
+              <option value="rgb">RGB</option>
+              <option value="lab">Lab</option>
+            </select>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <button id="runKMeansBtn" class="px-2 py-2 bg-brand-600 text-white rounded">K-Means</button>
+            <button id="runMeanShiftBtn" class="px-2 py-2 bg-brand-600 text-white rounded">Mean Shift</button>
+            <button id="runHistBtn" class="px-2 py-2 bg-brand-600 text-white rounded">直方图</button>
+            <button id="runPcaBtn" class="px-2 py-2 bg-brand-600 text-white rounded">PCA</button>
+          </div>
+          <button id="runAreaFilterBtn" class="w-full px-2 py-2 bg-brand-700 text-white rounded">聚类 + 面积筛选</button>
+        </div>
+
+        <div class="card p-4 space-y-3">
+          <h2 class="font-semibold">3) 色彩调整模块</h2>
+          <div id="adjustmentControls" class="space-y-2"></div>
+          <div class="grid grid-cols-2 gap-2">
+            <button id="resetAdjustBtn" class="px-2 py-2 bg-slate-300 dark:bg-slate-700 rounded">重置滑块</button>
+            <button id="applyAdjustBtn" class="px-2 py-2 bg-brand-600 text-white rounded">应用调整</button>
+          </div>
+          <div class="grid grid-cols-1 gap-2">
+            <button id="runReinhardBtn" class="px-2 py-2 bg-brand-700 text-white rounded">Reinhard 颜色迁移</button>
+            <button id="runCurveBtn" class="px-2 py-2 bg-brand-700 text-white rounded">线性/非线性色彩变换</button>
+            <button id="runDlTransferBtn" class="px-2 py-2 bg-brand-900 text-white rounded">深度学习简易风格迁移</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="col-span-6 flex flex-col gap-4 overflow-hidden">
+        <div class="card p-3 flex items-center justify-between">
+          <h2 class="font-semibold">中央预览区（实时）</h2>
+          <div class="flex items-center gap-2 text-xs text-slate-500"><div id="loadingIndicator" class="loading hidden"></div><span id="statusText">就绪</span></div>
+        </div>
+        <div class="card flex-1 p-2 overflow-auto">
+          <canvas id="previewCanvas" class="max-w-full mx-auto rounded"></canvas>
+        </div>
+      </section>
+
+      <section class="col-span-3 overflow-y-auto space-y-4 pl-1">
+        <div class="card p-4">
+          <h2 class="font-semibold mb-2">4) 结果展示区</h2>
+          <div id="paletteGrid" class="grid grid-cols-2 gap-2"></div>
+        </div>
+        <div class="card p-4">
+          <h3 class="font-semibold mb-2">颜色直方图</h3>
+          <canvas id="histCanvas" width="320" height="220" class="w-full rounded bg-slate-50 dark:bg-slate-900"></canvas>
+        </div>
+        <div class="card p-4">
+          <h3 class="font-semibold mb-2">PCA 主成分</h3>
+          <pre id="pcaOutput" class="text-xs bg-slate-100 dark:bg-slate-900 p-2 rounded whitespace-pre-wrap"></pre>
+        </div>
+        <div class="card p-4 text-xs text-slate-500 dark:text-slate-400">
+          <h3 class="font-semibold text-slate-700 dark:text-slate-200 mb-1">使用说明</h3>
+          <ol class="list-decimal pl-4 space-y-1">
+            <li>上传原图（可选上传目标风格图）。</li>
+            <li>运行 K-Means / Mean Shift / Histogram / PCA 提取颜色信息。</li>
+            <li>用 HSV/HSL/Lab/曲线参数实时调色。</li>
+            <li>使用 Reinhard 或 DL 简易迁移完成风格统一。</li>
+            <li>复制色板或下载结果图。</li>
+          </ol>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
